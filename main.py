@@ -1,30 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog as fd
 from tkinter import messagebox as mb
-
-# ------------------------
-# Audio Controller (stub)
-# ------------------------
-class AudioController:
-    def __init__(self):
-        self.loaded = False
-        self.current_time = 0.0
-
-    def load(self, filepath):
-        print(f"[Audio] load: {filepath}")
-        self.loaded = True
-        self.current_time = 0.0
-
-    def play_pause(self):
-        print("[Audio] play / pause")
-
-    def seek(self, delta):
-        self.current_time += delta
-        self.current_time = max(0.0, self.current_time)
-        print(f"[Audio] Seek to {self.current_time:.2f}")
-    
-    def get_current_time(self):
-        return self.current_time
+from audio_ctrl import AudioController
 
 
 # --------------
@@ -148,6 +125,7 @@ class MainApp(tk.Tk):
         if path:
             self.audio.load(path)
             self.draw_dummy_wave()
+            self.text.focus_set()
 
     def save_text(self):
         path = fd.asksaveasfilename(
@@ -204,9 +182,25 @@ class MainApp(tk.Tk):
     # ----- Key Bindings -----
     def bind_keys(self):
         self.bind("<Control-o>", lambda e: self.open_file())
-        self.bind("<Control-p>", lambda e: self.audio.play_pause())
         self.bind("<Control-Shift-M>", lambda e: self.save_text())
 
+        # Maintain cursor position upon playing/pausing
+        def play_pause_restore_cursor(e):
+            index = self.text.index(tk.INSERT)
+            self.audio.play_pause()
+            self.text.mark_set(tk.INSERT, index)
+            return "break"
+        self.text.bind("<Control-p>", play_pause_restore_cursor)
+
+        # Bind <Ctrl-a> to select all text
+        def select_all_text(e):
+            self.text.tag_add(tk.SEL, "1.0", "end-1c")
+            self.text.mark_set(tk.INSERT, "1.0")
+            self.text.see("insert")
+            return "break"
+        self.text.bind("<Control-a>", select_all_text)
+
+        self.bind("<F8>", lambda e: self.audio.seek(-self.rewind_long))
         self.bind("<F9>", lambda e: self.audio.seek(-self.rewind_long))
         self.bind("<F11>", lambda e: self.audio.seek(self.rewind_short))
         self.bind("<F12>", lambda e: self.audio.seek(self.rewind_long))
