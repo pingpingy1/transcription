@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog as fd
 from tkinter import messagebox as mb
+from tkinter import ttk
 from audio_ctrl import AudioController
 
 
@@ -48,6 +49,59 @@ class MacroManager:
         tk.Button(win, text="Save", command=save).grid(
             row=len(self.macros), column=0, columnspan=2, pady=10
         )
+
+
+# ------------------
+# Speed Controller
+# ------------------
+class SpeedControl(ttk.Frame):
+    def __init__(self, master, on_change):
+        super().__init__(master)
+        self.on_change = on_change
+        self.var = tk.IntVar(value=0)
+
+        self.label = ttk.Label(self, text="Speed: 0% (1.00x)")
+        self.label.pack()
+        self.scale = ttk.Scale(
+            self,
+            from_=-99,
+            to=100,
+            orient="horizontal",
+            command=self._changed,
+            length=400,
+        )
+        self.scale.set(0)
+        self.scale.pack(fill="x", padx=10)
+
+        self.scale.bind("<Button-1>", self.jump_on_click)
+        self.scale.bind("<Double-Button-1>", self.reset)
+
+    def _changed(self, value):
+        percent = int(float(value))
+        speed = 1.0 + percent / 100.0
+        self.label.config(
+            text=f"Speed: {percent}% ({speed:.2f}x)",
+        )
+        self.on_change(speed)
+
+    def reset(self, event=None):
+        self.scale.set(0)
+        self._changed(0)
+
+    def jump_on_click(self, e):
+        element = self.scale.identify(e.x, e.y)
+        if element not in ("trough", "track"):
+            return
+
+        minv = float(self.scale.cget("from"))
+        maxv = float(self.scale.cget("to"))
+
+        trough_start, _ = self.scale.coords(minv)
+        trough_end, _ = self.scale.coords(maxv)
+        ratio = (e.x - trough_start) / (trough_end - trough_start)
+
+        self.scale.set(minv + ratio * (maxv - minv))
+        return "break"
 
 
 # ---------
@@ -116,6 +170,14 @@ class MainApp(tk.Tk):
         self.wave_canvas = tk.Canvas(self, height=120, bg="#f0f0f0")
         self.wave_canvas.pack(fill="x")
         self.draw_dummy_wave()
+
+        slider = ttk.Frame(self)
+        slider.pack(side="top", fill="x")
+        self.speed_control = SpeedControl(
+            slider,
+            on_change=self.audio.set_speed,
+        )
+        self.speed_control.pack(side="right", fill="x", padx=10)
 
     # ----- Actions -----
     def open_file(self):
@@ -210,6 +272,12 @@ class MainApp(tk.Tk):
             self.audio.seek(-self.rewind_short)
             return "break"
         self.bind_all("<F10>", on_f10)
+
+        # Bind <Ctrl-0> to reset playback speed
+        def reset_speed(e):
+            self.speed_control.reset()
+            return "break"
+        self.bind("<Control-0>", reset_speed)
 
 
 if __name__ == "__main__":

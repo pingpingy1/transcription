@@ -2,15 +2,46 @@ import time
 import threading
 import sounddevice as sd
 import soundfile as sf
+import numpy as np
+
+
+def resample_audio(data, old_speed, new_speed, position):
+    if new_speed <= 0:
+        raise ValueError("new_speed must be positive")
+    if old_speed == new_speed:
+        return (data, position)
+
+    n = data.shape[0]
+    new_n = int(n / new_speed)
+
+    x_old = np.linspace(0, 1, n)
+    x_new = np.linspace(0, 1, new_n)
+
+    if data.ndim == 1:
+        new_data = np.interp(x_new, x_old, data)
+    else:
+        channels = [
+            np.interp(x_new, x_old, data[:, ch])
+            for ch in range(data.shape[1])
+        ]
+        new_data = np.stack(channels, axis=1)
+
+    new_index = int(position / new_speed)
+    new_index = max(0, min(new_index, new_data.shape[0] - 1))
+
+    return (new_data, new_index)
 
 
 class AudioController:
     def __init__(self):
         self.data = None        # numpy array (frames, channels)
+        self.original_data = None
         self.samplerate = None
 
-        self.position = 0       # sample index
+        self.position = 0       # sample index for original speed
+        self.play_index = 0     # sample index for current speed
         self.playing = False
+        self.speed = 1.0
 
         self.stream = None
         self.lock = threading.RLock()
@@ -21,6 +52,7 @@ class AudioController:
 
         with self.lock:
             self.data = data
+            self.original_data = data
             self.samplerate = sr
             self.position = 0
 
@@ -74,6 +106,20 @@ class AudioController:
             self.stream.stop()
             self.stream.close()
             self.stream = None
+
+    # ----- Change playback speed -----
+    def set_speed(self, speed):
+        if self.data is not None:
+            with self.lock:
+                self.data, self.play_index = resample_audio(
+                    self.original_data,
+                    self.speed,
+                    speed,
+                    self.position,
+                )
+
+        self.speed = speed
+        print(f"[Audio] speed set to {speed:.2f}x")
 
     # ----- Seek/Query -----
     def seek(self, delta):
